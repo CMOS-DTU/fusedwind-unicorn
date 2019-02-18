@@ -1002,6 +1002,13 @@ class FUSED_Object(FUSED_Unique):
         if self.my_case_runner is None or self.my_case_runner.i_am_executing:
             self._build_input_vector()
             self.compute(self.input_values, self.output_values)
+#            #CMOS debug code:
+#            if self.object_name in ['hawc2_wrapper_dlc13_wsp10_wdir010_s6004','hawc2_wrapper_dlc10_wsp08_wdir000_s1003']:
+#                print(self.object_name)
+#                print(self._build_input_vector()['x'])
+#                print(self.output_values.keys())
+#                print(self.output_values['blade3_tip_root_local_moment_y'])
+#                import pdb;pdb.set_trace()
             self._updating_data()
             # labeling the object as not distributed
             self.output_at_rank = {}
@@ -1010,7 +1017,6 @@ class FUSED_Object(FUSED_Unique):
 
     # This will retrieve a specific variable
     def __getitem__(self, key):
-        
         # First verify this is a valid key
         ifc = self.get_interface()
         if not key in ifc['output'].keys():

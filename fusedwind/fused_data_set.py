@@ -100,6 +100,9 @@ class FUSED_Data_Set(object):
             self.data[key] = {}
             self.data[key]['values'] = np.array(f['data/'+key+'/values'])
             self.data[key]['is_set'] = np.array(f['data/'+key+'/status'])
+            self.collumn_list.append(key)
+
+        f.close()
 
 #    def save_pickle(self,pickle_name=None):
 #        import pickle
@@ -213,13 +216,10 @@ class FUSED_Data_Set(object):
         #Setting the data and meta data:
         for i,id in enumerate(job_id):
             self.data[name]['values'][id] =  data[i]
-            #The data point status is default 0, 1 if the data is set and up to date and 2 if it is failed More can be added in a costumized version of the object.
             self.data[name]['is_set'][id] =  True
 
     #Sets the status flag. Automatically if output is pulled the flag is set to 1.
     def set_status(self,name,status,job_id=None):
-        """Set status flag for data. Automatically if output is pulled the flag is set to 1."""
-        status = int(status)
         if job_id is None:
             for id in self.data[name]['is_set']:
                 id=status
@@ -227,7 +227,7 @@ class FUSED_Data_Set(object):
             self.data[name]['is_set'][job_id] = status
 
     #Checks whether the entire collumn or a single job_id has updated data.
-    def has_updated_data(self,name,job_id=None,status_flag=1):
+    def has_updated_data(self,name,job_id=None,status_flag=True):
         out = True
         if name not in self.data.keys():
             raise Exception('Name not in dataset.')
@@ -235,13 +235,13 @@ class FUSED_Data_Set(object):
         if job_id is None:
             for id in self.data[name]['is_set']:
                 if not id == status_flag:
-                    out = True
+                    out = False
         else:
             if not self.data[name]['is_set'][job_id] == status_flag:
                 out = False
         return out
     
-    #Iniate a variable collumn in the data set with name:
+    #Initiate a variable collumn in the data set with name:
     def declare_variable(self, name, dtype=None):
         if name in self.data.keys():
             raise Exception('Data already exists with the name {}. Remove the data before initiating empty data row'.format(name))
@@ -270,7 +270,7 @@ class FUSED_Data_Set(object):
             self.declare_variable(output_name)
             #print('Empty data collumn {} initiated'.format(output_name))
         else:
-            print('WARNING:! Data collumn of name {} already exists.'.format(output_name))
+            print('Connected output {} to existing data collumn.'.format(output_name))
 
     #This method returns a list of job-objects which can be executed in mpi.
     #job_range is an array of two numbers.Start and finish job.
@@ -372,17 +372,3 @@ class FUSED_Data_Set(object):
             if not self.data[output_name]['is_set'][job_id] == True:
                 self.data[output_name]['values'][job_id] = output_obj[output_tag]
                 self.data[output_name]['is_set'][job_id] = True
-
-class data_set_job(object):
-    def __init__(self,data_set,job_id):
-        self.data_set = data_set
-        self.job_id = job_id
-
-    def execute(self):
-        return self.data_set.execute_job(self.job_id)
-
-    def get_output(self):
-        return self.data_set.get_output(self.job_id)
-
-    def set_output(self,output):
-        self.data_set.set_output(self.job_id,output)

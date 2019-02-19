@@ -67,9 +67,9 @@ class FUSED_Data_Set(object):
             print('File exists already'.format(hdf5_file))
             old_number = 1
             while True:
-                if not os.path.isfile('old_{}_{}'.format(old_number,hdf5_file)):
-                    print('Moving {} to old_{}_{}'.format(hdf5_file,old_number,hdf5_file))
-                    os.rename(hdf5_file,'old_{}_{}'.format(old_number,hdf5_file))
+                if not os.path.isfile('{}_{}_old'.format(old_number,hdf5_file)):
+                    print('Moving {} to {}_{}_old'.format(hdf5_file,old_number,hdf5_file))
+                    os.rename(hdf5_file,'{}_{}_old'.format(old_number,hdf5_file))
                     break
                 old_number +=1
         print('Saving DOE as {}'.format(hdf5_file))        

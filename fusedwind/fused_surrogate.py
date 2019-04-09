@@ -19,13 +19,15 @@ import numpy as np
 
 
 class FUSED_Surrogate(FUSED_Object):
-    def __init__(self, object_name_in='unnamed_surrogate_object',state_version_in=None,model_in=None):
+    def __init__(self, object_name_in='unnamed_surrogate_object',state_version_in=None,model_in=None,input_names=[],output_name=None):
         super(FUSED_Surrogate, self).__init__(object_name_in, state_version_in)
 
         self.model = None
-        self.model_input_names = None
-        self.model_output_names = ['prediction']
-        self.output_name = None
+        self.model_input_names = []
+        self.model_output_names = []
+
+        self.input_names = input_names
+        self.output_name = output_name
 
         if not model_in is None:
             self.set_model(model_in)
@@ -34,10 +36,19 @@ class FUSED_Surrogate(FUSED_Object):
         if self.model is None:
             print('No model connected yet. The interface is still empty')
         else:
-            for var in self.model_output_names:
-                self.add_output(var)
+            #Adding the outputs that exist in the model to the interface:
+            for var in self.output_names:
+                if not var in self.model_output_names:
+                    print('output name %s not found in model'%var,flush=True)
+                else:
+                    self.add_output(var)
+
+            #Testing that all the inputs for the model is supplied:
             for var in self.model_input_names:
-                self.add_input(var)
+                if not var in self.input_names:
+                    raise Exception('Input name %s not supplied by the fused object. Make sure that all inputs are given to the model'%var)
+                else:        
+                    self.add_input(var)
     
     #Class to set the model. The model_obj is described above.
     def set_model(self,model_obj):
@@ -49,6 +60,13 @@ class FUSED_Surrogate(FUSED_Object):
             self.model_output_names = self.model.output_names
         else:
             print('The model has no outputname. The output name of the fused-object is by default \'prediction\'')
+        if self.input_names == []:
+            self.input_names = self.model.input_names
+
+        if self.output_name == None:
+            self.output_name = self.model.output_name
+        
+        self.output_names = ['%s_prediction'%self.output_name,'%s_sigma'%self.output_name]
 
     #Fused wind way of getting output:
     def compute(self,inputs,outputs):
@@ -58,81 +76,26 @@ class FUSED_Surrogate(FUSED_Object):
         np_array = np.empty((1,len(inputs)))
         for n, var in enumerate(self.model_input_names):
             if not var in inputs:
-                raise Exception('The name {} was not found in the input variables. Syncronize the connected independent variables and the model.input_names to ensure that the model is connect correctly')
+                raise Exception('The name %s was not found in the input variables. Syncronize the connected independent variables and the model.input_names to ensure that the model is connect correctly'%var)
             np_array[0,n] = inputs[var]
         prediction = self.model.get_prediction(np_array)
         for n, var in enumerate(self.model_output_names):
             outputs[var] = prediction[n]
 
 ## ----------- The rest of the classes are CMOS customized surrogates. They can be used as default, but are a bit complicated to modify and NOT seen as an integrated part of fused wind.
-
-class Multi_Fidelity_Surrogate(object):
-    
-    def __init__(self, cheap=None, exp=None, intersections=None):
-        if not cheap[1]  == exp[1] and cheap[2] == exp[2]:
-            raise Exception('The input and output keys should be the same and in the same order.. Other cases are not implemented yet!!')
-        else:
-            self.input_names = cheap[1]
-            self.output_name = cheap[2]
-
-        self.output_names = ['prediction','sigma']
-
-        self.data_set_object_cheap = cheap[0]
-        self.data_set_object_exp = exp[0]
-
-        built = 'False'
-
-    def build_model(self):
-        self.cheap_input = self.data_set_object_cheap.get_numpy_array(self.input_names)
-        self.cheap_output = self.data_set_object_cheap.get_numpy_array(self.output_name)
-
-        self.exp_input = self.data_set_object_exp.get_numpy_array(self.input_names)
-        self.exp_output = self.data_set_object_cheap.get_numpy_array(self.output_name)
-
-        ###########
-        self.exp_correction = self.exp_output
-        ###########
-
-        self.cheap_linear_model = Linear_Model(self.cheap_input,self.cheap_output)
-        self.cheap_linear_model.build()
-        
-        linear_prediction_cheap = self.cheap_linear_model.get_prediction(self.cheap_input)
-        linear_remainder = self.cheap_output-linear_prediction_cheap
-
-        self.cheap_GP_model = Kriging_Model(self.cheap_input,linear_remainder)
-        self.cheap_GP_model.build()
-
-        self.exp_correction_linear_model = Linear_Model(self.exp_input,self.exp_correction)
-        self.exp_correction_linear_model.build()
-
-        linear_prediction_correction = self.exp_correction_linear_model.get_prediction(self.exp_input)
-        linear_remainder_correction = self.exp_correction-linear_prediction_correction
-
-        self.exp_correction_GP_model = Kriging_Model(self.exp_input,linear_remainder_correction)
-        self.exp_correction_GP_model.build()
-
-        built = 'True'
- 
-    #Fast way of getting a prediction on a np-array data set: 
-    def get_prediction_matrix(self,input):
-        prediction = self.cheap_linear_model.get_prediction(input)+self.cheap_GP_model.get_prediction(input)+self.exp_correction_linear_model.get_prediction(input)+self.exp_correction_GP_model.get_prediction(input)
-        return prediction
-
-    #Single prediction for the fused wind coupling:
-    def get_prediction(self,input):
-        prediction = self.cheap_linear_model.get_prediction(input)+self.cheap_GP_model.get_prediction(input)+self.exp_correction_linear_model.get_prediction(input)+self.exp_correction_GP_model.get_prediction(input)
-        sigma = self.cheap_GP_model.get_sigma(input)**2+self.exp_correction_GP_model.get_sigma(input)**2
-        sigma = sigma**0.5
-        return [prediction,sigma]
-
 #Single fidelity surrogate object:
 class Single_Fidelity_Surrogate(object):
 
-    def __init__(self, input=None, output=None, dataset=None):
+    def __init__(self, input=None, output=None, dataset=None, input_names=None, output_name=None):
         self.input = input
         self.output = output
-
-        self.output_names = ['prediction','sigma']
+        self.input_names = []
+        self.input_names.extend(input_names)
+        self.output_name = output_name
+        if output_name == None:
+            self.output_names = ['prediction','sigma']
+        else:
+            self.output_names = ['%s_prediction'%output_name,'%s_sigma'%output_name]
         
         built = 'False'
 
@@ -143,19 +106,26 @@ class Single_Fidelity_Surrogate(object):
         linear_prediction = self.linear_model.get_prediction(self.input)
         linear_remainder = self.output-linear_prediction
 
-        self.GP_model = Kriging_Model(self.input,linear_remainder)
-        self.GP_model.build()
+        #Build kriging model:
+        kernel = C(1.0, (1e-2,1e2))*RBF(1,length_scale_bounds=(1e-2,1e2))
+        
+        self.GP_model = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10)
+        self.GP_model.fit(self.input,linear_remainder)
+
+        #self.GP_model = Kriging_Model(self.input,linear_remainder)
+        #self.GP_model.build()
 
         built = 'True'
 
     def get_prediction_matrix(self,input):
         prediction = self.linear_model.get_prediction(input)+self.GP_model.get_prediction(input)
+
         return prediction
 
     def get_prediction(self,input):
-        prediction = self.linear_model.get_prediction(input)+self.GP_model.get_prediction(input)
-        sigma = self.GP_model.get_sigma(input)
-        return [prediction,sigma]
+        gp_prediction, gp_sigma = self.GP_model.predict(input,return_std=True)
+        prediction = self.linear_model.get_prediction(input)+gp_prediction
+        return [prediction,gp_sigma]
 
     def do_LOO(self, extra_array_input=None, extra_array_output=None):
         error_array = do_LOO(self, extra_array_input, extra_array_output)
@@ -167,7 +137,7 @@ def do_LOO(self, extra_array_input=None, extra_array_output=None):
     The function takes an extra data array of test-cases.
     '''
     full_input = self.input
-    full_output = self.output  
+    full_output = self.output
     error_array = []
 
     #Doing leave one out test:
@@ -186,12 +156,12 @@ def do_LOO(self, extra_array_input=None, extra_array_output=None):
     self.input = full_input
     self.output = full_output
     self.build_model()
-    
+
     #Testing error on extra points:
     if not extra_array_input is None:
         for ind, test_input in enumerate(extra_array_input):
             TI = np.array([test_input])
-            TO = extra_test_array_output[ind]
+            TO = extra_array_output[ind]
             predicted_output = self.get_prediction(TI)[0]
             error_array.append(np.abs(predicted_output-TO))
 
@@ -265,16 +235,16 @@ class Linear_Model(linear_model.LinearRegression):
         return covariates
 
 class Kriging_Model(GaussianProcessRegressor):
-    
+
     def __init__(self,input=None,output=None):
         super(Kriging_Model, self).__init__(input,output)
         self.input = input
         self.output = output
 
-        self.kernel = C(1.0, (1e-2,1e2))*RBF(10,(1e-3,1e3))
-        self.n_restarts_optimizer = 9
+        self.kernel = C(1.0, (1e-2,1e2))*RBF(10,(1e-2,1e2))
+        self.n_restarts_optimizer = 10
         self.optimizer = 'fmin_l_bfgs_b'
-        self.alpha = 1e-6
+        self.alpha = 1e-50
         self.normalize_y = True
         self.copy_X_train = False
         self.random_state = None
@@ -287,9 +257,84 @@ class Kriging_Model(GaussianProcessRegressor):
             self.fit(self.input,self.output)
         self.is_build = 'True'
 
-    def get_prediction(self,input):
-        return self.predict(input)
+    def get_prediction(self,input, return_std=True):
+        return self.predict(input, return_std)
 
-    def get_sigma(self,input):
-        prediction, sigma = self.predict(input,return_std=True)
-        return sigma
+def Create_Group_Of_Surrogates_On_Dataset(data_set,input_collumn_names,output_collumn_names):
+    from fusedwind.fused_wind import FUSED_Group
+    #Get input data:
+    input_array = np.transpose(data_set.get_numpy_array(input_collumn_names))
+    surrogate_list = []
+
+    #We need a surrogate for each output_collumn:
+    for output in output_collumn_names:
+        output_array = np.transpose(data_set.get_numpy_array(output))
+        surrogate_model = Single_Fidelity_Surrogate(input_array,output_array,input_names=input_collumn_names,output_name = output)
+        surrogate_model.build_model()
+        fused_object = FUSED_Surrogate(model_in=surrogate_model)
+        surrogate_list.append(fused_object)
+    
+    group = FUSED_Group(surrogate_list)
+    group.add_input_interface_from_objects(surrogate_list,merge_by_input_name=True)
+    group.add_output_interface_from_objects(surrogate_list)
+    return group
+
+#Propably outdatedclass Multi_Fidelity_Surrogate(object):
+#Propably outdated    
+#Propably outdated    def __init__(self, cheap=None, exp=None, intersections=None):
+#Propably outdated        if not cheap[1]  == exp[1] and cheap[2] == exp[2]:
+#Propably outdated            raise Exception('The input and output keys should be the same and in the same order.. Other cases are not implemented yet!!')
+#Propably outdated        else:
+#Propably outdated            self.input_names = cheap[1]
+#Propably outdated            self.output_name = cheap[2]
+#Propably outdated
+#Propably outdated        self.output_names = ['prediction','sigma']
+#Propably outdated
+#Propably outdated        self.data_set_object_cheap = cheap[0]
+#Propably outdated        self.data_set_object_exp = exp[0]
+#Propably outdated
+#Propably outdated        built = 'False'
+#Propably outdated
+#Propably outdated    def build_model(self):
+#Propably outdated        self.cheap_input = self.data_set_object_cheap.get_numpy_array(self.input_names)
+#Propably outdated        self.cheap_output = self.data_set_object_cheap.get_numpy_array(self.output_name)
+#Propably outdated
+#Propably outdated        self.exp_input = self.data_set_object_exp.get_numpy_array(self.input_names)
+#Propably outdated        self.exp_output = self.data_set_object_cheap.get_numpy_array(self.output_name)
+#Propably outdated
+#Propably outdated        ###########
+#Propably outdated        self.exp_correction = self.exp_output
+#Propably outdated        ###########
+#Propably outdated
+#Propably outdated        self.cheap_linear_model = Linear_Model(self.cheap_input,self.cheap_output)
+#Propably outdated        self.cheap_linear_model.build()
+#Propably outdated        
+#Propably outdated        linear_prediction_cheap = self.cheap_linear_model.get_prediction(self.cheap_input)
+#Propably outdated        linear_remainder = self.cheap_output-linear_prediction_cheap
+#Propably outdated
+#Propably outdated        self.cheap_GP_model = Kriging_Model(self.cheap_input,linear_remainder)
+#Propably outdated        self.cheap_GP_model.build()
+#Propably outdated
+#Propably outdated        self.exp_correction_linear_model = Linear_Model(self.exp_input,self.exp_correction)
+#Propably outdated        self.exp_correction_linear_model.build()
+#Propably outdated
+#Propably outdated        linear_prediction_correction = self.exp_correction_linear_model.get_prediction(self.exp_input)
+#Propably outdated        linear_remainder_correction = self.exp_correction-linear_prediction_correction
+#Propably outdated
+#Propably outdated        self.exp_correction_GP_model = Kriging_Model(self.exp_input,linear_remainder_correction)
+#Propably outdated        self.exp_correction_GP_model.build()
+#Propably outdated
+#Propably outdated        built = 'True'
+#Propably outdated
+#Propably outdated 
+#Propably outdated    #Fast way of getting a prediction on a np-array data set: 
+#Propably outdated    def get_prediction_matrix(self,input):
+#Propably outdated        prediction = self.cheap_linear_model.get_prediction(input)+self.cheap_GP_model.get_prediction(input)+self.exp_correction_linear_model.get_prediction(input)+self.exp_correction_GP_model.get_prediction(input)
+#Propably outdated        return prediction
+#Propably outdated
+#Propably outdated    #Single prediction for the fused wind coupling:
+#Propably outdated    def get_prediction(self,input):
+#Propably outdated        prediction = self.cheap_linear_model.get_prediction(input)+self.cheap_GP_model.get_prediction(input)+self.exp_correction_linear_model.get_prediction(input)+self.exp_correction_GP_model.get_prediction(input)
+#Propably outdated        sigma = self.cheap_GP_model.get_sigma(input)**2+self.exp_correction_GP_model.get_sigma(input)**2
+#Propably outdated        sigma = sigma**0.5
+#Propably outdated        return [prediction,sigma]

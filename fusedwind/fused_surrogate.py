@@ -119,13 +119,16 @@ class Single_Fidelity_Surrogate(object):
 
     def get_prediction_matrix(self,input):
         prediction = self.linear_model.get_prediction(input)+self.GP_model.get_prediction(input)
-
         return prediction
 
-    def get_prediction(self,input):
+    def get_prediction(self,input,return_std=True):
+        #There is no speed deficit by taking the standard deviation of the prediction as well:
         gp_prediction, gp_sigma = self.GP_model.predict(input,return_std=True)
         prediction = self.linear_model.get_prediction(input)+gp_prediction
-        return [prediction,gp_sigma]
+        if return_std:
+            return prediction,gp_sigma
+        else:
+            return prediction
 
     def do_LOO(self, extra_array_input=None, extra_array_output=None):
         error_array = do_LOO(self, extra_array_input, extra_array_output)
@@ -278,6 +281,55 @@ def Create_Group_Of_Surrogates_On_Dataset(data_set,input_collumn_names,output_co
     group.add_input_interface_from_objects(surrogate_list,merge_by_input_name=True)
     group.add_output_interface_from_objects(surrogate_list)
     return group
+
+def get_matrix_prediction_from_group(surrogate_group, input):
+    #Get object list:
+    object_list = []
+    group_output_list = []
+    method_output_list = []
+    output = []
+
+    for key in surrogate_group.get_all_object_keys():
+        object_list.append(surrogate_group.get_object(key))
+    for key in surrogate_group.get_interface()['output'].keys():
+        group_output_list.append(key)
+
+    for object in object_list:
+        output_name = object.output_name
+        object_used = False
+        return_std = False
+
+        #Checking for the common output naming types:
+        if output_name in group_output_list:
+            method_output_list.append(output_name)
+            object_used = True
+        elif output_name+'_prediction':
+            method_output_list.append(output_name+'_prediction')
+            object_used = True
+
+        if output_name+'_sigma' in group_output_list:
+            method_output_list.append(output_name+'_sigma')
+            return_std = True
+        
+        if object_used:
+            prediction = object.model.get_prediction(input,return_std=return_std)
+            if return_std:
+                prediction = np.concatenate([[prediction[0][:,0]],[prediction[1]]],axis=0)
+            else:
+                raise print('WARNING not matrix prediction of group is not tested without standard deviation yet.')
+            output.append(prediction)
+    output = np.concatenate(output,axis=0)
+
+    return output,method_output_list
+    
+
+
+
+
+
+
+
+
 
 #Propably outdatedclass Multi_Fidelity_Surrogate(object):
 #Propably outdated    

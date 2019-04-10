@@ -209,7 +209,7 @@ class FUSED_Data_Set(object):
 
         #Is the data the correct length?
         if not len(data) == len(job_id):
-            raise Exception('Data length {} is not corresponding to job_id count {}.'.format(len(data)),format(len(job_id)))
+            raise Exception('Data length %i is not corresponding to job_id count %i.'%(len(data),len(job_id)))
         
         #Setting the data and meta data:
         for i,id in enumerate(job_id):
@@ -373,6 +373,22 @@ class FUSED_Data_Set(object):
             if not self.data[output_name]['is_set'][job_id] == True:
                 self.data[output_name]['values'][job_id] = output_obj[output_tag]
                 self.data[output_name]['is_set'][job_id] = True
+
+    def print_bounds(self,names=None):
+        if names == None:
+            names = self.collumn_list
+        #Find longest name:
+        string_length = str(len(max(names,key=len)))
+        row_format = "{0:>"+string_length+"}{1:.4}{2:4}{3:4}{4:4}"
+        print(row_format.format('Name',' ','Min',' ','Max'))
+        row_format = "{0:>"+string_length+"}{1:4}{2:2E}{3:4}{4:2E}"
+        for name in names:
+            array = self.get_numpy_array(name)
+            print(row_format.format(name,'',np.min(array),'',np.max(array)))
+
+    def plot(self):
+        print('Plotting is not yet implemented.')
+        return
 
 class data_set_job(object):
     def __init__(self,data_set,job_id):

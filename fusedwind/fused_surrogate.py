@@ -99,18 +99,32 @@ class Single_Fidelity_Surrogate(object):
         
         built = 'False'
 
-    def build_model(self):
-        self.linear_model = Linear_Model(self.input,self.output)
-        self.linear_model.build()
-
+    def build_model(self,linear_model=None,GP_model=None):
+        if not linear_model=None:
+            self.linear_model = linear_model
+        else:
+            self.linear_model = Linear_Model(self.input,self.output)
+        
+        try:
+            self.linear_model.build()
+        
         linear_prediction = self.linear_model.get_prediction(self.input)
         linear_remainder = self.output-linear_prediction
 
+        if not GP_model=None:
+            self.GP_model = GP_model
+        else:
+            self.GP_model = OT_Kriging_Model(self.input,linear_remainder)
+
+        try:
+            self.GP_model.build()
+
         #Build kriging model:
-        kernel = C(1.0, (1e-2,1e2))*RBF(1,length_scale_bounds=(1e-2,1e2))
-        
-        self.GP_model = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10)
-        self.GP_model.fit(self.input,linear_remainder)
+#        kernel = C(1.0, (1e-2,1e2))*RBF(1,length_scale_bounds=(1e-2,1e2))
+#        input_len = len(self.input_names)
+#        kernel = 1*RBF([1]*input_len,[(1e-4,1e2)]*input_len)
+#        self.GP_model = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=100)
+#        self.GP_model.fit(self.input,linear_remainder)
 
         #self.GP_model = Kriging_Model(self.input,linear_remainder)
         #self.GP_model.build()
@@ -237,6 +251,23 @@ class Linear_Model(linear_model.LinearRegression):
                                 covariates = np.concatenate([covariates,covariate],axis=1)
         return covariates
 
+class OT_Kriging_Model(object):
+    def __init__(self,input=None,output=None):
+        import openturns as ot
+        input_data = input
+        output_data = output
+        dim = len(input_data[0])
+        self.basis = ot.ConstantBasisFactory(dim).build()
+        self.cov = ot.MaternModel([1.], [2.5], 1.5)
+        self.algokriging = ot.KrigingAlgorithm(input,output,self.cov,self.basis,True)
+        
+        startingPoint = ot.LHSExperiment(ot.Uniform(1e-1, 1e2), 50).generate()
+        import pdb;pdb.set_trace()
+        self.algokriging.setOptimizationAlgorithm(ot.MultiStart(ot.TNC(), startingPoint))
+        self.algokriging.setOptimizationBounds(ot.Interval([0.1]*(dim+1),[1e2]*(dim+1)))
+        self.algokriging.run()
+        import pdb;pdb.set_trace()
+
 class Kriging_Model(GaussianProcessRegressor):
 
     def __init__(self,input=None,output=None):
@@ -244,7 +275,7 @@ class Kriging_Model(GaussianProcessRegressor):
         self.input = input
         self.output = output
 
-        self.kernel = C(1.0, (1e-2,1e2))*RBF(10,(1e-2,1e2))
+        self.kernel = C(1.0, (1e-2,1e2))*RBF(10,(1e-2,1e1))
         self.n_restarts_optimizer = 10
         self.optimizer = 'fmin_l_bfgs_b'
         self.alpha = 1e-50
@@ -263,14 +294,19 @@ class Kriging_Model(GaussianProcessRegressor):
     def get_prediction(self,input, return_std=True):
         return self.predict(input, return_std)
 
-def Create_Group_Of_Surrogates_On_Dataset(data_set,input_collumn_names,output_collumn_names):
+def Create_Group_Of_Surrogates_On_Dataset(data_set,input_collumn_names,output_collumn_names,linear_model=None,GP_model=None):
     from fusedwind.fused_wind import FUSED_Group
+    from copy import copy
+
     #Get input data:
     input_array = np.transpose(data_set.get_numpy_array(input_collumn_names))
     surrogate_list = []
 
     #We need a surrogate for each output_collumn:
     for output in output_collumn_names:
+        current_lin_model = copy(linear_model)
+        current_GP_model = copy(GP_model)
+
         output_array = np.transpose(data_set.get_numpy_array(output))
         surrogate_model = Single_Fidelity_Surrogate(input_array,output_array,input_names=input_collumn_names,output_name = output)
         surrogate_model.build_model()
@@ -282,6 +318,7 @@ def Create_Group_Of_Surrogates_On_Dataset(data_set,input_collumn_names,output_co
     group.add_output_interface_from_objects(surrogate_list)
     return group
 
+#A method to get much faster sampling from a group of surrogates than to push and pull:
 def get_matrix_prediction_from_group(surrogate_group, input):
     #Get object list:
     object_list = []
@@ -321,15 +358,6 @@ def get_matrix_prediction_from_group(surrogate_group, input):
     output = np.concatenate(output,axis=0)
 
     return output,method_output_list
-    
-
-
-
-
-
-
-
-
 
 #Propably outdatedclass Multi_Fidelity_Surrogate(object):
 #Propably outdated    

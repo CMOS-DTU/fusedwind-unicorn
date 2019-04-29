@@ -385,6 +385,22 @@ class FUSED_Data_Set(object):
         for name in names:
             array = self.get_numpy_array(name)
             print(row_format.format(name,'',np.min(array),'',np.max(array)))
+    
+    def get_collumn_list(self):
+        return self.collumn_list
+
+    def split_data_set(self,index):
+        data_set1 = FUSED_Data_Set()
+        data_set2 = FUSED_Data_Set()
+
+        collumn_list = self.get_collumn_list()
+
+        for name in self.collumn_list:
+            data_set1.set_data(self.get_numpy_array(name)[0][:index],name)
+            data_set2.set_data(self.get_numpy_array(name)[0][index:],name)
+
+        return data_set1, data_set2
+
 
     def plot(self):
         print('Plotting is not yet implemented.')

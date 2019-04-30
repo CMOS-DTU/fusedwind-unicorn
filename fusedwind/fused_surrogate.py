@@ -232,7 +232,7 @@ class Kriging_Model(object):
         
         #Creating kernel !!This is a tunable point!!
         RBF_kernel = skl_gp.kernels.RBF(length_scale=[1]*self.n_vars,length_scale_bounds=[(1e-4,10)]*self.n_vars)
-        self.GP = skl_gp.GaussianProcessRegressor(kernel=RBF_kernel,alpha=4e-4,n_restarts_optimizer=30,normalize_y=True).fit(self.X,self.train_output)
+        self.GP = skl_gp.GaussianProcessRegressor(kernel=RBF_kernel,alpha=4e-4,n_restarts_optimizer=5,normalize_y=True).fit(self.X,self.train_output)
 
     def get_prediction(self, input, return_std=True):
         input = self.std_obj.transform(input)
